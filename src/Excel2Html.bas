@@ -59,61 +59,111 @@ Private Function cvtToCssThickness(ByVal thickness As XlBorderWeight) As String
 End Function
 
 Private Function getLineCss(ByRef rng As Range) As String
-    Dim cl As Variant, ct As Variant, cr As Variant, cb As Variant
-    Dim wl As XlBorderWeight, wt As XlBorderWeight, wr As XlBorderWeight, wb As XlBorderWeight
+    ' 各線の属性
+    Dim ci(0 To 3) As Variant        ' ColorIndex
+    Dim c(0 To 3) As Variant         ' Color
+    Dim w(0 To 3) As XlBorderWeight  ' Weight
+    Dim dr(0 To 3) As XlBordersIndex ' Direction
+    Dim drnm(0 To 3) As String       ' Direction Name (CSS)
+    Dim bs(0 To 3) As String         ' Border Style (CSS)
+    
     Dim resultCss As String
+    Dim isSameColorIndex As Boolean
     Dim isSameColor As Boolean
     Dim isSameThickness As Boolean
+    Dim isSameBorderStyle As Boolean
+    
+    Dim i As Integer
+    
+    ' 定数代入
+    dr(0) = xlEdgeLeft
+    dr(1) = xlEdgeTop
+    dr(2) = xlEdgeRight
+    dr(3) = xlEdgeBottom
+    drnm(0) = "left"
+    drnm(1) = "top"
+    drnm(2) = "right"
+    drnm(3) = "bottom"
     
     ' 線の属性取得
-    With rng
-        ' color
-        cl = .Borders(xlEdgeLeft).color
-        ct = .Borders(xlEdgeTop).color
-        cr = .Borders(xlEdgeRight).color
-        cb = .Borders(xlEdgeBottom).color
-        isSameColor = (cl = ct And ct = cr And cr = cb)
-        
-        ' weight
-        wl = .Borders(xlEdgeLeft).Weight
-        wt = .Borders(xlEdgeTop).Weight
-        wr = .Borders(xlEdgeRight).Weight
-        wb = .Borders(xlEdgeBottom).Weight
-        isSameThickness = (wl = wt And wt = wr And wr = wb)
-    End With
+    For i = 0 To 3
+        With rng.Borders(dr(i))
+            ci(i) = .ColorIndex
+            c(i) = .color
+            w(i) = .Weight
+            Select Case .LineStyle ' 線種
+                Case xlLineStyleNone, xlContinuous
+                    bs(i) = "solid" ' 実線のほか、線なしも solid で扱う (太さを 0 として処理)
+                Case xlDouble
+                    bs(i) = "double" ' 二重線
+                Case xlDot
+                    bs(i) = "dotted" ' 点線
+                Case xlDash, xlDashDot, xlDashDotDot, xlSlantDashDot
+                    bs(i) = "dashed" ' 破線
+                Case Else
+                    bs(i) = "solid"
+            End Select
+        End With
+    Next i
     
-    resultCss = "border:solid"
+    ' 線の色が全て同じか・線の太さが全て同じかを取得
+    isSameColorIndex = (ci(0) = ci(1) And ci(1) = ci(2) And ci(2) = ci(3))
+    isSameColor = (c(0) = c(1) And c(1) = c(2) And c(2) = c(3))
+    isSameBorderStyle = (bs(0) = bs(1) And bs(1) = bs(2) And bs(2) = bs(3))
+    isSameThickness = True ' 以下の処理で値を求める
+    For i = 1 To 3
+        ' 透明な線は比較対象外
+        If ci(i - 1) = xlColorIndexNone Or ci(i) = xlColorIndexNone Then
+            GoTo continue
+        End If
+        ' 太さが同じか確認し、違ったら抜ける
+        If w(i - 1) <> w(i) Then
+            isSameThickness = False
+            Exit For
+        End If
+continue:
+    Next i
     
-    ' 上下左右の線が全て同じ色の場合
-    If isSameColor Then
-        resultCss = resultCss & " " & cvtToCssColor(cl)
+    ' 四辺が透明の場合
+    If isSameColorIndex And ci(0) = xlColorIndexNone Then
+        resultCss = ""
+        GoTo last
     End If
     
+    ' 上下左右の線が全て同じ線種の場合
+    If isSameBorderStyle Then
+        resultCss = bs(0)
+    End If
+    ' 上下左右の線が全て同じ色の場合 (ただし透明の場合を除く)
+    If isSameColorIndex And ci(0) <> xlColorIndexNone Then
+        resultCss = resultCss & " " & cvtToCssColor(c(0))
+    End If
     ' 上下左右の線が全て同じ太さの場合
     If isSameThickness Then
-        resultCss = resultCss & " " & cvtToCssThickness(wl)
+        resultCss = resultCss & " " & cvtToCssThickness(w(0))
     End If
+    resultCss = "border:" & Trim(resultCss) & ";"
     
-    resultCss = resultCss & ";"
-    
-    
-    ' 上下左右の線が異なる色/太さの場合、できるだけ短い CSS コードを出力できるように心がける
-    If (Not isSameColor) And (Not isSameThickness) Then
-        resultCss = resultCss & "border-left:solid " & cvtToCssThickness(wl) & IIf(cl <> &H0, " " & cvtToCssColor(cl), "") & ";"
-        resultCss = resultCss & "border-top:solid " & cvtToCssThickness(wt) & IIf(ct <> &H0, " " & cvtToCssColor(ct), "") & ";"
-        resultCss = resultCss & "border-right:solid " & cvtToCssThickness(wr) & IIf(cr <> &H0, " " & cvtToCssColor(cr), "") & ";"
-        resultCss = resultCss & "border-bottom:solid " & cvtToCssThickness(wb) & IIf(cb <> &H0, " " & cvtToCssColor(cb), "") & ";"
-    ElseIf Not isSameColor Then
-        resultCss = resultCss & IIf(cl <> &H0, "border-left:solid " & cvtToCssColor(cl), "") & ";"
-        resultCss = resultCss & IIf(ct <> &H0, "border-top:solid " & cvtToCssColor(ct), "") & ";"
-        resultCss = resultCss & IIf(cr <> &H0, "border-right:solid " & cvtToCssColor(cr), "") & ";"
-        resultCss = resultCss & IIf(cb <> &H0, "border-bottom:solid " & cvtToCssColor(cb), "") & ";"
-    ElseIf Not isSameThickness Then
-        resultCss = resultCss & "border-left:solid " & cvtToCssThickness(wl) & IIf(cl <> &H0, " " & cvtToCssColor(cl), "") & ";"
-        resultCss = resultCss & "border-top:solid " & cvtToCssThickness(wt) & IIf(ct <> &H0, " " & cvtToCssColor(ct), "") & ";"
-        resultCss = resultCss & "border-right:solid " & cvtToCssThickness(wr) & IIf(cr <> &H0, " " & cvtToCssColor(cr), "") & ";"
-        resultCss = resultCss & "border-bottom:solid " & cvtToCssThickness(wb) & IIf(cb <> &H0, " " & cvtToCssColor(cb), "") & ";"
-    End If
+    ' 上下左右の線が異なる色/太さの場合
+    For i = 0 To 3
+        If ci(i) = xlColorIndexNone Then
+            ' 透明な線
+            resultCss = resultCss & "border-" & drnm(i) & ":0;"
+        Else
+            If Not isSameBorderStyle Then
+                ' 線種が統一されていない
+                resultCss = resultCss & "border-" & drnm(i) & "-style:" & bs(i) & ";"
+            End If
+            If Not isSameColorIndex Then
+                ' 線色が統一されていない
+                resultCss = resultCss & "border-" & drnm(i) & "-color:" & cvtToCssColor(c(i)) & ";"
+            End If
+            If Not isSameThickness Then
+                ' 線幅が統一されていない
+                resultCss = resultCss & "border-" & drnm(i) & "-width:" & cvtToCssThickness(w(i)) & ";"
+            End If
+        End If
+    Next i
     
 last:
     getLineCss = resultCss
@@ -141,80 +191,125 @@ Private Sub htmlFinishCurRow(ByRef s As String)
     s = s & OfstIdt & IIf(AddCenterTag, Idt, "") & IIf(AddTableTag, Idt, "") & "</tr>" & Br
 End Sub
 
-Private Sub htmlAddNewCell(ByRef s As String, _
-                           ByVal newCellArea As Range)
-    Dim cellValue As String
+' 指定したセルのプロパティを表す HTML を返します。
+' なお、セルに含まれる全ての文字列に共通するスタイルも含めて返します。
+Private Function getCellProperties(ByRef newCellArea As Range) As String
     Dim colspan As Integer, rowspan As Integer
+    Dim bgColorIndex As Variant
     Dim bgColor As Long
-    Dim color As Long
     Dim textAlign As Variant
     Dim verticalAlign As Variant
-    Dim isBold As Boolean
     
-    ' 結合セルのプロパティを取得
-    cellValue = newCellArea.Cells(1, 1).Text ' セルの文字列は必ず Range の左上セルを使用
+    Dim cssTextDecoration As String
+    
+    Dim propColspan As String
+    Dim propRowspan As String
+    Dim propStyle As String
+    Dim ret As String
+    
+    ' 常に取得可能なプロパティ (Null が返らない) を取得
     colspan = newCellArea.Columns.Count
     rowspan = newCellArea.Rows.Count
-    bgColor = newCellArea.Interior.color
-    color = newCellArea.Font.color
     textAlign = newCellArea.Cells(1, 1).HorizontalAlignment
     verticalAlign = newCellArea.Cells(1, 1).VerticalAlignment
-    isBold = newCellArea.Cells(1, 1).Font.Bold
+    bgColorIndex = newCellArea.Interior.ColorIndex
+    bgColor = newCellArea.Interior.color
     
-    s = s & OfstIdt & IIf(AddCenterTag, Idt, "") & IIf(AddTableTag, Idt, "") & Idt & "<td"
+    ' colspan / rowspan プロパティ内の文字列作成
+    propColspan = IIf(colspan > 1, CStr(colspan), "")
+    propRowspan = IIf(rowspan > 1, CStr(rowspan), "")
     
-    ' 行方向の連結
-    If colspan > 1 Then
-        s = s & " colspan=" & CStr(colspan)
+    ' style プロパティ内の文字列作成 (セル内の文字列が部分的に異なるスタイルの場合、各種プロパティは Null となるので注意)
+    With newCellArea.Cells(1, 1).Font ' フォント関連をまとめて
+        ' font-weight
+        If Not IsNull(.Bold) Then
+            propStyle = propStyle & IIf(.Bold = True, "font-weight:bold;", "")
+        End If
+        ' font-style
+        If Not IsNull(.Italic) Then
+            propStyle = propStyle & IIf(.Italic = True, "font-style:italic;", "")
+        End If
+        ' text-decoration
+        If Not IsNull(.Underline) Then
+            If .Underline = xlUnderlineStyleNone Then
+                ' NOP
+            Else
+                ' 何らかの下線が引いてある場合、強制的に一重線の下線をつける (CSS で二重線引くのは諦める)
+                cssTextDecoration = cssTextDecoration & "underline "
+            End If
+        End If
+        If Not IsNull(.Strikethrough) Then
+            cssTextDecoration = cssTextDecoration & IIf(.Strikethrough = True, "line-through ", "")
+        End If
+        propStyle = propStyle & IIf(Len(cssTextDecoration) > 0, "text-decoration:" & Trim(cssTextDecoration) & ";", "")
+        ' color
+        If Not IsNull(.color) Then
+            If .color <> &H0 Then ' 文字色 = 黒 以外の場合だけ、文字色を指定する CSS を吐く
+                propStyle = propStyle & IIf(.color <> &H0, "color:" & cvtToCssColor(.color) & ";", "")
+            End If
+        End If
+    End With
+    
+    ' background
+    If bgColorIndex <> xlColorIndexNone Then ' 透明以外
+        propStyle = propStyle & "background:" & cvtToCssColor(bgColor) & ";"
     End If
-    
-    ' 列方向の連結
-    If rowspan > 1 Then
-        s = s & " rowspan=" & CStr(rowspan)
-    End If
-    
-    ' CSS
-    s = s & " style="""
-    
-    ' CSS: 背景色
-    If bgColor <> &HFFFFFF Then ' 白以外
-        s = s & "background:" & cvtToCssColor(bgColor) & ";"
-    End If
-    
-    ' CSS: 文字色
-    If color <> &H0 Then ' 黒以外
-        s = s & "color:" & cvtToCssColor(color) & ";"
-    End If
-    
-    ' CSS: テキストの水平方向アライン
+    ' text-align
     If textAlign = xlCenter Then
-        s = s & "text-align:center;"
+        propStyle = propStyle & "text-align:center;"
     ElseIf textAlign = xlRight Then
-        s = s & "text-align:right;"
+        propStyle = propStyle & "text-align:right;"
     End If
-    
-    ' CSS: テキストの垂直方向アライン
-    If verticalAlign = xlVAlignCenter Then
-        s = s & "vertical-align:middle;"
+    ' vertical-align
+    If verticalAlign = xlVAlignTop Then
+        propStyle = propStyle & "vertical-align:top;"
     ElseIf verticalAlign = xlVAlignBottom Then
-        s = s & "vertical-align:bottom;"
-    Else
-        s = s & "vertical-align:top;"
+        propStyle = propStyle & "vertical-align:bottom;"
     End If
+    ' border
+    propStyle = propStyle & getLineCss(newCellArea)
     
-    ' CSS: 太字
-    If isBold Then
-        s = s & "font-weight:bold;"
+    ' ファイナライズ
+    If propColspan <> "" Then
+        ret = ret & "colspan=" & propColspan & " "
     End If
+    If propRowspan <> "" Then
+        ret = ret & "rowspan=" & propRowspan & " "
+    End If
+    If propStyle <> "" Then
+        ret = ret & "style=""" & propStyle & """"
+    End If
+    ret = Trim(ret) ' 先頭/末尾の半角スペースを除去
     
-    ' CSS: border
-    s = s & getLineCss(newCellArea) ' 線の色、線の太さを表す CSS 文字列を取得
+    getCellProperties = ret
+End Function
 
-    s = s & """>"
+' 指定したセルの文字列をスタイル付きで返します。
+' 本関数は、セルの文字列の一部だけにスタイルが適用されている場合は <font> タグを使用して個別にスタイル適用した HTML を返します。
+' セル全体に適用された書式へ本関数は関与しません。
+Private Function getCellValueWithStyle(ByRef newCellArea As Range) As String
+    Dim cellValue As String
+    Dim ret As String
+    cellValue = newCellArea.Cells(1, 1).Text ' セルの文字列は必ず Range の左上セルを使用
     
-    ' セルの文字列
-    s = s & cellValue
-    s = s & "</td>" & Br
+    ret = cellValue
+    getCellValueWithStyle = ret
+End Function
+
+Private Sub htmlAddNewCell(ByRef s As String, _
+                           ByRef newCellArea As Range)
+    Dim prop As String
+    Dim content As String
+    
+    ' <td> のプロパティ取得
+    prop = getCellProperties(newCellArea)
+    ' <td> ～ </td> 内の HTML 取得
+    content = getCellValueWithStyle(newCellArea)
+    
+    ' <td> タグ追記
+    s = s & OfstIdt & IIf(AddCenterTag, Idt, "") & IIf(AddTableTag, Idt, "") & Idt & _
+        "<td" & IIf(Len(prop) > 0, " ", "") & prop & ">" & _
+        content & "</td>" & Br
 End Sub
 
 ' ■ 設定ファイル読み込み
