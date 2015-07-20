@@ -17,7 +17,7 @@ FailGetConfValue:
     On Error GoTo FatalError
     
     ' プロパティが見つからなかったらデフォルト値を設定して、その値を返す
-    SetConfValue key, defaultValueWhenNotFound
+    SetConfValue key, defaultValueWhenNotFound, False
     GetConfValue = defaultValueWhenNotFound
     
     Exit Function
@@ -28,14 +28,16 @@ End Function
 
 Public Sub SetConfValue(ByVal key As String, ByVal value As Variant, Optional save As Boolean = True)
     Dim rowNum As Integer
+    Dim s As Worksheet
+    Dim existsConfWorksheet As Boolean
 
-    On Error GoTo NotFound
+    On Error GoTo PropertyNotFound
     
     ' 既にプロパティが存在したら上書き
     rowNum = Application.WorksheetFunction.Match(key, ThisWorkbook.Sheets(ConfSheetName).Range(SearchRange).EntireColumn(1), 0)
     With ThisWorkbook.Sheets(ConfSheetName).Range(SearchRange)
-        .Cells(rowNum, ResultColNum).value = value
         .NumberFormatLocal = "@" ' 文字列で管理
+        .Cells(rowNum, ResultColNum).value = value
     End With
     
     If save Then
@@ -43,14 +45,31 @@ Public Sub SetConfValue(ByVal key As String, ByVal value As Variant, Optional sa
     End If
     
     Exit Sub
+
+PropertyNotFound:
+    Resume CheckConfSheet
     
-NotFound:
-    Resume Enroll
-    
-Enroll:
+CheckConfSheet:
+    On Error GoTo FailCreateNewSheet
+    ' シートが存在しなかったら、新たにシートを作成
+    existsConfWorksheet = False
+    For Each s In ThisWorkbook.Worksheets
+        If s.Name = ConfSheetName Then
+            existsConfWorksheet = True
+            Exit For
+        End If
+    Next
+
+    If Not existsConfWorksheet Then
+        Dim newSheet As Worksheet
+        Set newSheet = ThisWorkbook.Worksheets.Add
+        newSheet.Name = ConfSheetName
+    End If
+
+AddNewProperty:
     On Error GoTo FailSetConfValue
+
     ' プロパティが存在しなかったら、新規プロパティとして行を追加
-    
     If Application.WorksheetFunction.CountBlank(ThisWorkbook.Sheets(ConfSheetName).Range(SearchRange).EntireColumn(1)) = 0 Then
         GoTo FailSetConfValue ' 空行なし (全ての行の A 列が埋まっている)
     End If
@@ -66,8 +85,11 @@ Enroll:
         End If
     End With
     
-    ThisWorkbook.Sheets(ConfSheetName).Range(SearchRange).Cells(rowNum, 1) = key
-    ThisWorkbook.Sheets(ConfSheetName).Range(SearchRange).Cells(rowNum, ResultColNum) = value
+    ThisWorkbook.Sheets(ConfSheetName).Range(SearchRange).Cells(rowNum, 1).value = key
+    With ThisWorkbook.Sheets(ConfSheetName).Range(SearchRange).Cells(rowNum, ResultColNum)
+        .NumberFormatLocal = "@"
+        .value = value
+    End With
     
     If save Then
         ThisWorkbook.save
@@ -75,6 +97,9 @@ Enroll:
     
     Exit Sub
     
+FailCreateNewSheet:
+    MsgBox "Conf シートの作成に失敗しました。"
+    Exit Sub
 FailSetConfValue:
     MsgBox "プロパティ " & key & " に値 " & CStr(value) & " を設定することが出来ませんでした。"
 End Sub

@@ -14,8 +14,6 @@ Attribute VB_Creatable = False
 Attribute VB_PredeclaredId = True
 Attribute VB_Exposed = False
 Option Explicit
-Const ProductName As String = "Excel2Html"
-Dim ProductVersion As String
 
 Private Sub btn_cancel_Click()
     Excel2Html.CancelConverting
@@ -87,7 +85,6 @@ End Sub
 Private Sub UserForm_Activate()
     Dim i As Integer
     
-    ProductVersion = GetConfValue("ProductVersion", "1.00")
     Me.Caption = ProductName & " " & ProductVersion
     
     ' フォーム表示時に自動的に Excel → HTML 変換を行う
