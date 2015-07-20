@@ -1,16 +1,21 @@
 Attribute VB_Name = "Excel2Html"
 Option Explicit
 
-' ★改行の種類 (お好きなものに変更可)
-Const Br As String = vbNewLine
 
 ' ★<table>タグの付加有無
 Const AddTableTag As Boolean = True
 
+' ★基準とするフォントサイズ (これ以外のフォントサイズの場合のみ <td> の style に font-size を指定する
+Const DefFontSize As Integer = 11
+
 ' インデントの種類
 Dim Idt As String
 Dim OfstIdt As String
-Dim AddCenterTag As Boolean ' <center>タグの付加有無
+Dim OfstIdtBackup As String ' 改行なしで出力時に最後に 1 つだけ付けてあげるオフセットインデント
+' <center>タグの付加有無
+Dim AddCenterTag As Boolean
+' 改行の種類
+Dim Br As String
 
 Public CancelReq As Boolean
 
@@ -32,7 +37,6 @@ Private Function bgr2Rgb(ByVal color As Variant) As Variant
                ((color And bMask) / (2 ^ 16))
 End Function
 
-' ■ CSS 出力用関数
 Private Function cvtToCssColor(ByVal color As Variant) As String
     Dim cssColor As Variant
     cssColor = bgr2Rgb(color)
@@ -58,6 +62,9 @@ Private Function cvtToCssThickness(ByVal thickness As XlBorderWeight) As String
     cvtToCssThickness = cssThickness
 End Function
 
+' ■ CSS 出力用関数
+
+' 渡された Range の線色、線幅、線種を表す CSS 文字列を返します
 Private Function getLineCss(ByRef rng As Range) As String
     ' 各線の属性
     Dim ci(0 To 3) As Variant        ' ColorIndex
@@ -169,58 +176,17 @@ last:
     getLineCss = resultCss
 End Function
 
-' ■ HTML タグ出力メソッド群
-Private Sub htmlPostProcess(ByRef s As String)
-    If AddTableTag Then
-        s = OfstIdt & IIf(AddCenterTag, Idt, "") & "<table style=""border-collapse:collapse"">" & Br & _
-            s & _
-            OfstIdt & IIf(AddCenterTag, Idt, "") & "</table>" & Br
-    End If
-    If AddCenterTag Then
-        s = OfstIdt & "<center>" & Br & _
-            s & _
-            OfstIdt & "</center>" & Br
-    End If
-End Sub
-
-Private Sub htmlStartNewRow(ByRef s As String)
-    s = s & OfstIdt & IIf(AddCenterTag, Idt, "") & IIf(AddTableTag, Idt, "") & "<tr>" & Br
-End Sub
-
-Private Sub htmlFinishCurRow(ByRef s As String)
-    s = s & OfstIdt & IIf(AddCenterTag, Idt, "") & IIf(AddTableTag, Idt, "") & "</tr>" & Br
-End Sub
-
-' 指定したセルのプロパティを表す HTML を返します。
-' なお、セルに含まれる全ての文字列に共通するスタイルも含めて返します。
-Private Function getCellProperties(ByRef newCellArea As Range) As String
-    Dim colspan As Integer, rowspan As Integer
-    Dim bgColorIndex As Variant
-    Dim bgColor As Long
-    Dim textAlign As Variant
-    Dim verticalAlign As Variant
-    
+' 渡されたフォントの CSS 文字列を返します
+Private Function getFontCss(ByRef f As Font) As String
+    Dim propStyle As String
     Dim cssTextDecoration As String
     
-    Dim propColspan As String
-    Dim propRowspan As String
-    Dim propStyle As String
-    Dim ret As String
-    
-    ' 常に取得可能なプロパティ (Null が返らない) を取得
-    colspan = newCellArea.Columns.Count
-    rowspan = newCellArea.Rows.Count
-    textAlign = newCellArea.Cells(1, 1).HorizontalAlignment
-    verticalAlign = newCellArea.Cells(1, 1).VerticalAlignment
-    bgColorIndex = newCellArea.Interior.ColorIndex
-    bgColor = newCellArea.Interior.color
-    
-    ' colspan / rowspan プロパティ内の文字列作成
-    propColspan = IIf(colspan > 1, CStr(colspan), "")
-    propRowspan = IIf(rowspan > 1, CStr(rowspan), "")
-    
     ' style プロパティ内の文字列作成 (セル内の文字列が部分的に異なるスタイルの場合、各種プロパティは Null となるので注意)
-    With newCellArea.Cells(1, 1).Font ' フォント関連をまとめて
+    With f
+        ' font-size
+        If Not IsNull(.Size) Then
+            propStyle = propStyle & IIf(.Size <> DefFontSize, "font-size:" & CStr(.Size) & "pt;", "")
+        End If
         ' font-weight
         If Not IsNull(.Bold) Then
             propStyle = propStyle & IIf(.Bold = True, "font-weight:bold;", "")
@@ -242,6 +208,13 @@ Private Function getCellProperties(ByRef newCellArea As Range) As String
             cssTextDecoration = cssTextDecoration & IIf(.Strikethrough = True, "line-through ", "")
         End If
         propStyle = propStyle & IIf(Len(cssTextDecoration) > 0, "text-decoration:" & Trim(cssTextDecoration) & ";", "")
+        ' vetical-align
+        If Not IsNull(.Subscript) Then
+            propStyle = propStyle & IIf(.Subscript = True, "vertical-align:sub;", "")
+        End If
+        If Not IsNull(.Superscript) Then
+            propStyle = propStyle & IIf(.Superscript = True, "vertical-align:super;", "")
+        End If
         ' color
         If Not IsNull(.color) Then
             If .color <> &H0 Then ' 文字色 = 黒 以外の場合だけ、文字色を指定する CSS を吐く
@@ -249,6 +222,38 @@ Private Function getCellProperties(ByRef newCellArea As Range) As String
             End If
         End If
     End With
+    
+    getFontCss = propStyle
+End Function
+
+' 指定したセルのフォント、文字列のアライン、セルの連結数、線の色・幅・種類、背景色を表す HTML のプロパティ文字列を返します。
+' ただし、セル内文字列の一部分だけに適用されているスタイルは変換対象としません。
+Private Function getCellProperties(ByRef newCellArea As Range) As String
+    Dim colspan As Integer, rowspan As Integer
+    Dim bgColorIndex As Variant
+    Dim bgColor As Long
+    Dim textAlign As Variant
+    Dim verticalAlign As Variant
+    
+    Dim propColspan As String
+    Dim propRowspan As String
+    Dim propStyle As String
+    Dim ret As String
+    
+    ' 常に取得可能なプロパティ (Null が返らない) を取得
+    colspan = newCellArea.Columns.Count
+    rowspan = newCellArea.Rows.Count
+    textAlign = newCellArea.Cells(1, 1).HorizontalAlignment
+    verticalAlign = newCellArea.Cells(1, 1).VerticalAlignment
+    bgColorIndex = newCellArea.Interior.ColorIndex
+    bgColor = newCellArea.Interior.color
+    
+    ' フォントスタイル設定
+    propStyle = propStyle & getFontCss(newCellArea.Font)
+    
+    ' colspan / rowspan プロパティ内の文字列作成
+    propColspan = IIf(colspan > 1, CStr(colspan), "")
+    propRowspan = IIf(rowspan > 1, CStr(rowspan), "")
     
     ' background
     If bgColorIndex <> xlColorIndexNone Then ' 透明以外
@@ -284,17 +289,113 @@ Private Function getCellProperties(ByRef newCellArea As Range) As String
     getCellProperties = ret
 End Function
 
-' 指定したセルの文字列をスタイル付きで返します。
-' 本関数は、セルの文字列の一部だけにスタイルが適用されている場合は <font> タグを使用して個別にスタイル適用した HTML を返します。
-' セル全体に適用された書式へ本関数は関与しません。
-Private Function getCellValueWithStyle(ByRef newCellArea As Range) As String
+' 指定したセル内に部分的な文字列スタイルが適用されているかどうかを返します
+Private Function existPartialStyle(ByRef newCellArea As Range) As Boolean
+    Dim ret As Boolean
+    
+    With newCellArea.Font
+        If IsNull(.color) Or IsNull(.Bold) Or IsNull(.Italic) Or _
+           IsNull(.Underline) Or IsNull(.Strikethrough) Or _
+           IsNull(.Size) Or IsNull(.Subscript) Or IsNull(.Superscript) Or _
+           IsNull(.ThemeFont) Or IsNull(.FontStyle) Or IsNull(.TintAndShade) Then
+            ret = True
+        End If
+    End With
+    
+    existPartialStyle = ret
+End Function
+
+Private Function isSameFont(ByRef l As Font, ByRef r As Font) As Boolean
+    Dim ret As Boolean
+    ret = (l.Bold = r.Bold) And _
+           (l.color = r.color) And _
+           (l.ColorIndex = r.ColorIndex) And _
+           (l.FontStyle = r.FontStyle) And _
+           (l.Italic = r.Italic) And _
+           (l.Size = r.Size) And _
+           (l.Strikethrough = r.Strikethrough) And _
+           (l.Subscript = r.Subscript) And _
+           (l.Superscript = r.Superscript) And _
+           (l.ThemeFont = r.ThemeFont) And _
+           (l.Underline = r.Underline)
+
+    isSameFont = ret
+End Function
+
+' HTML 用のエスケープや改行の変換を行います。
+Private Function cvtTextToHtml(ByVal str As String) As String
+    str = Replace(str, "<", "&lt;")
+    str = Replace(str, ">", "&gt;")
+    str = Replace(str, vbNewLine, "<br>")
+    str = Replace(str, vbCrLf, "<br>")
+    str = Replace(str, vbLf, "<br>")
+    str = Replace(str, vbCr, "<br>")
+    
+    cvtTextToHtml = str
+End Function
+
+' 指定したセル内の文字列をスタイル付きで返します。
+' 本関数は、セルの文字列の一部だけにスタイルが適用されている場合、 <font> タグを使用して個別にスタイル適用した HTML を返します。
+' セル全体に共通して適用された文字列書式へは本関数は関与しません。
+Private Function getCellValueWithStyle(ByVal newCellArea As Range) As String
     Dim cellValue As String
     Dim ret As String
-    cellValue = newCellArea.Cells(1, 1).Text ' セルの文字列は必ず Range の左上セルを使用
+    Dim i As Long
+    Dim css As String
+    Dim txtBuf As String
+    Dim prevFont As Font
+    Dim txtLen As Long
     
-    ret = cellValue
+    ' セルの文字列を整形 (エスケープなど)
+    cellValue = Replace(cellValue, "<", "&lt;")
+    cellValue = Replace(cellValue, ">", "&gt;")
+    cellValue = Replace(cellValue, vbNewLine, "<br>")
+    cellValue = Replace(cellValue, vbCrLf, "<br>")
+    cellValue = Replace(cellValue, vbLf, "<br>")
+    cellValue = Replace(cellValue, vbCr, "<br>")
+    
+    ' セルの値をセット
+    If existPartialStyle(newCellArea) = True Then
+        ' 部分的なスタイル適用 (TODO: 処理が超遅いのでどうにかしたい)
+        With newCellArea.Cells(1, 1)
+            txtLen = Len(.Text)
+            If txtLen > 0 Then
+                Set prevFont = .Characters(1, 1).Font
+            End If
+            For i = 1 To txtLen + 1
+                If i = txtLen + 1 Or Not isSameFont(prevFont, .Characters(i, 1).Font) Then
+                    ' フラッシュ
+                    css = getFontCss(prevFont)
+                    txtBuf = cvtTextToHtml(txtBuf)
+                    If css = "" Then
+                        ret = ret & txtBuf
+                    Else
+                        ret = ret & "<font style=""" & css & """>" & txtBuf & "</font>"
+                    End If
+                    txtBuf = ""
+                End If
+                Set prevFont = .Characters(i, 1).Font
+                txtBuf = txtBuf & .Characters(i, 1).Text
+            Next i
+        End With
+    Else
+        cellValue = newCellArea.Cells(1, 1).Text ' セルの文字列は必ず Range の左上セルを使用
+        ' 部分的なスタイル適用なし
+        
+        ret = cvtTextToHtml(cellValue)
+    End If
+    
     getCellValueWithStyle = ret
 End Function
+
+' ■ HTML タグ出力メソッド群
+Private Sub htmlStartNewRow(ByRef s As String)
+    s = s & OfstIdt & IIf(AddCenterTag, Idt, "") & IIf(AddTableTag, Idt, "") & "<tr>" & Br
+End Sub
+
+Private Sub htmlFinishCurRow(ByRef s As String)
+    s = s & OfstIdt & IIf(AddCenterTag, Idt, "") & IIf(AddTableTag, Idt, "") & "</tr>" & Br
+End Sub
 
 Private Sub htmlAddNewCell(ByRef s As String, _
                            ByRef newCellArea As Range)
@@ -312,6 +413,37 @@ Private Sub htmlAddNewCell(ByRef s As String, _
         content & "</td>" & Br
 End Sub
 
+Private Sub htmlPostProcess(ByRef s As String)
+    Dim additionalTableProperties As String
+    Dim tblClass As String
+    Dim tblId As String
+    
+    tblClass = GetConfValue("TableClass", "")
+    tblId = GetConfValue("TableId", "")
+    
+    If tblClass <> "" Then
+        additionalTableProperties = additionalTableProperties & "class=""" & tblClass & """ "
+    End If
+    If tblId <> "" Then
+        additionalTableProperties = additionalTableProperties & "id=""" & tblId & """ "
+    End If
+    
+    If AddTableTag Then
+        s = OfstIdt & IIf(AddCenterTag, Idt, "") & "<table " & additionalTableProperties & "style=""border-collapse:collapse;font-size:" & DefFontSize & "pt"">" & Br & _
+            s & _
+            OfstIdt & IIf(AddCenterTag, Idt, "") & "</table>" & Br
+    End If
+    If AddCenterTag Then
+        s = OfstIdt & "<center>" & Br & _
+            s & _
+            OfstIdt & "</center>" & Br
+    End If
+    ' 改行なしで出力する場合、オフセットのインデントは付けてあげる
+    If Br = "" Then
+        s = OfstIdtBackup & s
+    End If
+End Sub
+
 ' ■ 設定ファイル読み込み
 Private Sub loadConfig()
     Dim indentType As Integer
@@ -320,6 +452,7 @@ Private Sub loadConfig()
     indentType = GetConfValue("IndentType", 0)
     indentOffset = GetConfValue("IndentOffset", 0)
     AddCenterTag = IIf(GetConfValue("AddCenterTag", 1) = 1, True, False)
+    Br = IIf(GetConfValue("Nobr", 0) = 0, vbNewLine, "")
     
     ' インデントに使う文字を取得
     Select Case indentType
@@ -351,6 +484,12 @@ Private Sub loadConfig()
         OfstIdt = ""
         SetConfValue "IndentOffset", 0
     End If
+    
+    If Br = "" Then ' 改行なしで出力する場合は、インデントをなしにする (ただし、先頭に 1 つだけインデントをつける)
+        Idt = ""
+        OfstIdtBackup = OfstIdt
+        OfstIdt = ""
+    End If
 End Sub
 
 ' ■ 進捗通知
@@ -377,6 +516,7 @@ Public Function ConvertSelectedRangeToHtml() As String
     UI_Excel2Html.lbl_progress_bg.Visible = True
     UI_Excel2Html.lbl_progress_fg.Visible = True
     UI_Excel2Html.btn_cancel.Visible = True
+    UI_Excel2Html.lbl_prgBarBg.Visible = True
     
     ' 選択範囲を 1 セルずつ走査
     With Selection
@@ -405,10 +545,9 @@ Public Function ConvertSelectedRangeToHtml() As String
                 Set curAreaTopLeft = curArea.Cells(1, 1) ' 現在見ているセルが属する結合セルの左上セル (1 セル)
                 
                 ' r 行 c 列が結合セルの左上セルのときのみ HTML 出力する
-                If curCell = curAreaTopLeft Then
+                If curCell.Address = curAreaTopLeft.Address Then
                     htmlAddNewCell outHtml, curArea
                 End If
-                
                 
                 ' 進捗表示
                 If c >= checkPointC Then
@@ -443,6 +582,7 @@ Public Function ConvertSelectedRangeToHtml() As String
     UI_Excel2Html.lbl_progress_bg.Visible = False
     UI_Excel2Html.lbl_progress_fg.Visible = False
     UI_Excel2Html.btn_cancel.Visible = False
+    UI_Excel2Html.lbl_prgBarBg.Visible = False
 End Function
 
 

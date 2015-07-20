@@ -33,7 +33,10 @@ Public Sub SetConfValue(ByVal key As String, ByVal value As Variant, Optional sa
     
     ' 既にプロパティが存在したら上書き
     rowNum = Application.WorksheetFunction.Match(key, ThisWorkbook.Sheets(ConfSheetName).Range(SearchRange).EntireColumn(1), 0)
-    ThisWorkbook.Sheets(ConfSheetName).Range(SearchRange).Cells(rowNum, ResultColNum) = value
+    With ThisWorkbook.Sheets(ConfSheetName).Range(SearchRange)
+        .Cells(rowNum, ResultColNum).value = value
+        .NumberFormatLocal = "@" ' 文字列で管理
+    End With
     
     If save Then
         ThisWorkbook.save
