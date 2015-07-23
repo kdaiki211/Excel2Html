@@ -1,4 +1,6 @@
 # Excel2Html
-Excel ƒ[ƒNƒV[ƒgã‚Ì‘I‘ğ”ÍˆÍ‚ğ HTML ‚É•ÏŠ·‚µ‚Ü‚·B
+Excel ãƒ¯ãƒ¼ã‚¯ã‚·ãƒ¼ãƒˆä¸Šã®é¸æŠç¯„å›²ã‚’ HTML ã«å¤‰æ›ã—ã¾ã™ã€‚
 <br>
 Convert selected range of the Excel worksheet to HTML.
+
+![](https://raw.github.com/kdaiki211/Excel2Html/master/doc/demo.gif)
