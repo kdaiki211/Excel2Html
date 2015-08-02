@@ -389,6 +389,11 @@ Private Function getCellValueWithStyle(ByVal newCellArea As Range) As String
 End Function
 
 ' ■ HTML タグ出力メソッド群
+Private Sub htmlAddColTag(ByRef s As String, ByVal colWidthInPercent As Integer)
+    s = s & OfstIdt & IIf(AddCenterTag, Idt, "") & IIf(AddTableTag, Idt, "") _
+        & "<col style=""width:" & CStr(colWidthInPercent) & "%"">" & Br
+End Sub
+
 Private Sub htmlStartNewRow(ByRef s As String)
     s = s & OfstIdt & IIf(AddCenterTag, Idt, "") & IIf(AddTableTag, Idt, "") & "<tr>" & Br
 End Sub
@@ -427,9 +432,16 @@ Private Sub htmlPostProcess(ByRef s As String)
     If tblId <> "" Then
         additionalTableProperties = additionalTableProperties & "id=""" & tblId & """ "
     End If
+    If GetConfValue("FixedTableWidth", 0) = 1 Then
+        additionalTableProperties = additionalTableProperties & "width=" _
+        & CStr(CInt(Selection.Width# / 72# * 96#)) & " " ' FIXME: 高 DPI モニタ未対応の暫定実装
+    End If
     
     If AddTableTag Then
-        s = OfstIdt & IIf(AddCenterTag, Idt, "") & "<table " & additionalTableProperties & "style=""border-collapse:collapse;font-size:" & DefFontSize & "pt"">" & Br & _
+        s = OfstIdt & IIf(AddCenterTag, Idt, "") & "<table " _
+            & additionalTableProperties _
+            & "style=""border-collapse:collapse;font-size:" & DefFontSize & "pt"">" _
+            & Br & _
             s & _
             OfstIdt & IIf(AddCenterTag, Idt, "") & "</table>" & Br
     End If
@@ -532,6 +544,19 @@ Public Function ConvertSelectedRangeToHtml() As String
         checkPointR = 0
         checkPointC = 0
         
+        ' 列幅比率固定が有効時は <col> タグを付加する
+        If GetConfValue("KeepColumnWidthRatio", 1) = 1 Then
+            Dim tableWidth As Double
+            tableWidth = CDbl(.Columns.Width)
+            For c = 1 To .Columns.Count
+                Dim ratio As Double
+                Dim percent As Integer
+                ratio = CDbl(.Cells(1, c).Columns.Width) / tableWidth
+                percent = CInt(ratio * 100#)
+                htmlAddColTag outHtml, percent
+            Next c
+        End If
+
         ' 選択範囲内のセルを 1 つずつ走査 (メイン処理)
         For r = 0 To .Rows.Count - 1
         

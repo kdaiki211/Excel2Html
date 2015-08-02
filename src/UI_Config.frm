@@ -1,7 +1,7 @@
 VERSION 5.00
 Begin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} UI_Config 
    Caption         =   "Config"
-   ClientHeight    =   2640
+   ClientHeight    =   3585
    ClientLeft      =   30
    ClientTop       =   390
    ClientWidth     =   3180
@@ -13,6 +13,7 @@ Attribute VB_GlobalNameSpace = False
 Attribute VB_Creatable = False
 Attribute VB_PredeclaredId = True
 Attribute VB_Exposed = False
+
 Option Explicit
 
 Dim IsReady As Boolean ' Boolean の初期値は False
@@ -36,6 +37,24 @@ Private Sub chk_nobr_Click()
         Dim val As Integer
         val = IIf(chk_nobr.value, 1, 0)
         SetConfValue "Nobr", val, False
+        Modified = True
+    End If
+End Sub
+
+Private Sub chk_fixedTableWidth_Click()
+    If IsReady Then
+        Dim val As Integer
+        val = IIf(chk_fixedTableWidth.value, 1, 0)
+        SetConfValue "FixedTableWidth", val, False
+        Modified = True
+    End If
+End Sub
+
+Private Sub chk_keepColumnWidthRatio_Click()
+    If IsReady Then
+        Dim val As Integer
+        val = IIf(chk_keepColumnWidthRatio.value, 1, 0)
+        SetConfValue "KeepColumnWidthRatio", val, False
         Modified = True
     End If
 End Sub
@@ -69,13 +88,6 @@ Private Sub txt_tblId_Change()
 End Sub
 
 Private Sub UserForm_Activate()
-    Dim indentTypeIdx As Integer
-    Dim indentOffsetIdx As Integer
-    Dim addCenterTagVal As Integer
-    Dim nobr As Integer
-    Dim tblClass As String
-    Dim tblId As String
-    
     ' コンボボックス (IndentType) のアイテム追加
     cmb_indentType.AddItem "None"
     cmb_indentType.AddItem "Tab"
@@ -90,21 +102,15 @@ Private Sub UserForm_Activate()
     cmb_indentOffset.AddItem "3 Indents"
     cmb_indentOffset.AddItem "4 Indents"
     
-    ' 過去の選択値をロード
-    indentTypeIdx = GetConfValue("IndentType", 0)
-    indentOffsetIdx = GetConfValue("IndentOffset", 0)
-    addCenterTagVal = GetConfValue("AddCenterTag", 1)
-    nobr = GetConfValue("Nobr", 0)
-    tblClass = GetConfValue("TableClass", "")
-    tblId = GetConfValue("TableId", "")
-    
     ' 選択値を設定
-    cmb_indentType.ListIndex = indentTypeIdx
-    cmb_indentOffset.ListIndex = indentOffsetIdx
-    chk_center.value = IIf(addCenterTagVal = 1, True, False)
-    chk_nobr.value = IIf(nobr = 1, True, False)
-    txt_tblClass.Text = tblClass
-    txt_tblId.Text = tblId
+    cmb_indentType.ListIndex = GetConfValue("IndentType", 0)
+    cmb_indentOffset.ListIndex = GetConfValue("IndentOffset", 0)
+    txt_tblClass.Text = GetConfValue("TableClass", "")
+    txt_tblId.Text = GetConfValue("TableId", "")
+    chk_center.value = IIf(GetConfValue("AddCenterTag", 1) = 1, True, False)
+    chk_nobr.value = IIf(GetConfValue("Nobr", 0) = 1, True, False)
+    chk_fixedTableWidth.value = IIf(GetConfValue("FixedTableWidth", 0), True, False)
+    chk_keepColumnWidthRatio.value = IIf(GetConfValue("KeepColumnWidthRatio", 1), True, False)
     
     IsReady = True
     Modified = False
