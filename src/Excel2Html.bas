@@ -379,8 +379,13 @@ Private Function getCellValueWithStyle(ByVal newCellArea As Range) As String
             Next i
         End With
     Else
-        cellValue = newCellArea.Cells(1, 1).Text ' セルの文字列は必ず Range の左上セルを使用
         ' 部分的なスタイル適用なし
+        cellValue = newCellArea.Cells(1, 1).Text ' セルの文字列は必ず Range の左上セルを使用
+        
+        ' 空欄の場合は行の高さを維持するためにスペースを入れる
+        If cellValue = "" Then
+            cellValue = "&nbsp;"
+        End If
         
         ret = cvtTextToHtml(cellValue)
     End If
