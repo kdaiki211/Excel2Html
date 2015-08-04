@@ -226,6 +226,30 @@ Private Function getFontCss(ByRef f As Font) As String
     getFontCss = propStyle
 End Function
 
+' 指定された Range のうち非表示でないセルの列数を返します
+Private Function getNumOfVisibleColumns(ByRef newCellArea As Range) As Integer
+    Dim i As Integer
+    Dim ret As Integer
+    For i = 1 To newCellArea.Columns.Count
+        If newCellArea.Columns(i).Hidden = False Then
+            ret = ret + 1
+        End If
+    Next i
+    getNumOfVisibleColumns = ret
+End Function
+
+' 指定された Range のうち非表示でないセルの行数を返します
+Private Function getNumOfVisibleRows(ByRef newCellArea As Range) As Integer
+    Dim i As Integer
+    Dim ret As Integer
+    For i = 1 To newCellArea.Rows.Count
+        If newCellArea.Rows(i).Hidden = False Then
+            ret = ret + 1
+        End If
+    Next i
+    getNumOfVisibleRows = ret
+End Function
+
 ' 指定したセルのフォント、文字列のアライン、セルの連結数、線の色・幅・種類、背景色を表す HTML のプロパティ文字列を返します。
 ' ただし、セル内文字列の一部分だけに適用されているスタイルは変換対象としません。
 Private Function getCellProperties(ByRef newCellArea As Range) As String
@@ -241,8 +265,8 @@ Private Function getCellProperties(ByRef newCellArea As Range) As String
     Dim ret As String
     
     ' 常に取得可能なプロパティ (Null が返らない) を取得
-    colspan = newCellArea.Columns.Count
-    rowspan = newCellArea.Rows.Count
+    colspan = getNumOfVisibleColumns(newCellArea)
+    rowspan = getNumOfVisibleRows(newCellArea)
     textAlign = newCellArea.Cells(1, 1).HorizontalAlignment
     verticalAlign = newCellArea.Cells(1, 1).VerticalAlignment
     bgColorIndex = newCellArea.Interior.ColorIndex
@@ -554,21 +578,30 @@ Public Function ConvertSelectedRangeToHtml() As String
             Dim tableWidth As Double
             tableWidth = CDbl(.Columns.Width)
             For c = 1 To .Columns.Count
-                Dim ratio As Double
-                Dim percent As Integer
-                ratio = CDbl(.Cells(1, c).Columns.Width) / tableWidth
-                percent = CInt(ratio * 100#)
-                htmlAddColTag outHtml, percent
+                If .Columns(c).Hidden = False Then
+                    Dim ratio As Double
+                    Dim percent As Integer
+                    ratio = CDbl(.Cells(1, c).Columns.Width) / tableWidth
+                    percent = CInt(ratio * 100#)
+                    htmlAddColTag outHtml, percent
+                End If
             Next c
         End If
 
         ' 選択範囲内のセルを 1 つずつ走査 (メイン処理)
         For r = 0 To .Rows.Count - 1
+            If .Rows(r + 1).Hidden Then
+                GoTo continue_r
+            End If
         
             htmlStartNewRow outHtml
             
             For c = 0 To .Columns.Count - 1
                 Dim curCell As Range, curArea As Range, curAreaTopLeft As Range
+                
+                If .Columns(c + 1).Hidden Then
+                    GoTo continue_c
+                End If
                 
                 Set curCell = .Cells(1 + r, 1 + c) ' 現在見ているセル (1 セル)
                 Set curArea = curCell.MergeArea ' 現在見ているセルが属する結合セルの全体
@@ -579,6 +612,7 @@ Public Function ConvertSelectedRangeToHtml() As String
                     htmlAddNewCell outHtml, curArea
                 End If
                 
+continue_c:
                 ' 進捗表示
                 If c >= checkPointC Then
                     updateProgressBar r * .Columns.Count + c, numOfEntireCells
@@ -591,6 +625,7 @@ Public Function ConvertSelectedRangeToHtml() As String
             
             htmlFinishCurRow outHtml
             
+continue_r:
             If r >= checkPointR Then
                 updateProgressBar r * .Columns.Count + c, numOfEntireCells
                 checkPointR = checkPointR + progressUpdateInterval
